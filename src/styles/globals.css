@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens ─────────────────────────────────────────── */
+:root {
+  --color-navy: #022D42;
+  --color-beige: #F9F9F1;
+  --color-navy-soft: rgba(2, 45, 66, 0.6);
+  --color-beige-muted: rgba(249, 249, 241, 0.4);
+  --color-keyword: #aab6b6;
+
+  --font-sans: "Satoshi", system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), "Courier New", monospace;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+/* ─── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-navy);
+  color: var(--color-beige);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Prevent scroll during preloader */
+body.is-loading {
+  overflow: hidden;
+}
+
+/* ─── Typography scale ──────────────────────────────────────── */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* ─── Cursor ─────────────────────────────────────────────────── */
+* {
+  cursor: none;
+}
+
+/* Tools page — restore system cursor (no custom cursor here) */
+.tools-page,
+.tools-page * {
+  cursor: auto;
+}
+.tools-page button,
+.tools-page [role="button"],
+.tools-page .dropzone {
+  cursor: pointer;
+}
+.tools-page textarea,
+.tools-page input {
+  cursor: text;
+}

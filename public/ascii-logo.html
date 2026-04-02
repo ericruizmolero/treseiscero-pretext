@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>treseiscero — ASCII</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #F9F9F1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #ascii-canvas {
+    display: block;
+  }
+
+  #label {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(2, 45, 66, 0.25);
+    font: 10px/1 'Space Mono', monospace;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="ascii-canvas"></canvas>
+<span id="label">pixel boutique</span>
+
+<script>
+(function () {
+
+  /* ── Logo SVG (original paths) ──────────────────────────────── */
+  const SVG_SRC = `<svg width="123" height="18" viewBox="0 0 123 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M109.082 11.0681C109.082 6.89596 111.757 4.14233 115.682 4.14233C119.607 4.14233 122.281 6.89596 122.281 11.0681C122.281 15.2403 119.601 17.9999 115.682 17.9999C111.757 17.9999 109.082 15.2403 109.082 11.0681ZM112.111 11.0681C112.111 13.7502 113.458 15.3535 115.688 15.3535C117.912 15.3535 119.252 13.7562 119.252 11.0681C119.252 8.38006 117.912 6.78868 115.688 6.78868C113.458 6.78868 112.111 8.38602 112.111 11.0681Z" fill="#022D42"/>
+<path d="M103.625 11.3843V17.6426H100.607V4.50024H103.625V8.88102C104.172 6.16315 105.71 4.50024 108.409 4.50024H109.106V7.33136H108.109C104.695 7.33136 103.625 8.63069 103.625 11.3843Z" fill="#022D42"/>
+<path d="M96.9155 13.2377H99.8246C99.1214 16.2058 96.7653 17.9999 93.6037 17.9999C89.6547 17.9999 86.998 15.2045 86.998 11.0562C86.998 6.9198 89.6247 4.14233 93.5316 4.14233C97.3843 4.14233 99.8847 6.84828 99.8847 11.0264C99.8847 11.3363 99.8727 11.6403 99.8367 11.98H89.9793C90.2317 14.1674 91.5961 15.4787 93.6818 15.4787C95.2626 15.4787 96.3265 14.7218 96.9155 13.2377ZM90.0214 9.83436H96.8975C96.5789 7.75424 95.4189 6.63967 93.5436 6.63967C91.6202 6.63967 90.352 7.8198 90.0214 9.83436Z" fill="#022D42"/>
+<path d="M67.1078 4.14233C70.8644 4.14233 73.0162 5.85292 73.0162 8.59463H70.053C70.053 7.31318 69.0312 6.49067 67.1439 6.49067C65.4669 6.49067 64.3129 7.14033 64.3129 8.11185C64.3129 9.25025 65.8095 9.48866 67.2821 9.72707L68.1657 9.87012C70.3415 10.2218 73.461 10.7284 73.461 13.8933C73.461 16.5098 71.3092 17.9999 67.3723 17.9999C63.249 17.9999 61.1152 16.3668 61.1152 13.4403H64.0785C64.0785 14.8588 65.1303 15.6396 67.3542 15.6396C69.3317 15.6396 70.5038 15.0257 70.5038 13.9469C70.5038 12.6714 68.9711 12.3973 67.2641 12.1052L66.3745 11.9562C64.397 11.6105 61.3557 11.1039 61.3557 8.17145C61.3557 5.69795 63.5255 4.14233 67.1078 4.14233Z" fill="#022D42"/>
+<path d="M76.7559 11.0681C76.7559 13.7502 78.1023 15.3535 80.3322 15.3535C82.2496 15.3535 83.2594 14.1496 83.5599 12.5701H86.5712C86.1685 15.6873 83.8784 17.9999 80.3262 17.9999C76.4073 17.9999 73.7266 15.2403 73.7266 11.0681C73.7266 6.89596 76.4013 4.14233 80.3262 4.14233C83.8784 4.14233 86.1685 6.44894 86.5712 9.57211H83.5599C83.2654 7.99265 82.2556 6.78868 80.3322 6.78868C78.1023 6.78868 76.7559 8.38602 76.7559 11.0681Z" fill="#022D42"/>
+<path d="M60.5842 0V3.05164H57.4707V0H60.5842ZM60.5361 4.49998V17.6423H57.5188V4.49998H60.5361Z" fill="#022D42"/>
+<path d="M53.8296 13.2377H56.7387C56.0355 16.2058 53.6793 17.9999 50.5177 17.9999C46.5688 17.9999 43.9121 15.2045 43.9121 11.0562C43.9121 6.9198 46.5387 4.14233 50.4456 4.14233C54.2984 4.14233 56.7988 6.84828 56.7988 11.0264C56.7988 11.3363 56.7868 11.6403 56.7507 11.98H46.8934C47.1458 14.1674 48.5102 15.4787 50.5959 15.4787C52.1767 15.4787 53.2405 14.7218 53.8296 13.2377ZM46.9354 9.83436H53.8115C53.493 7.75424 52.3329 6.63967 50.4576 6.63967C48.5343 6.63967 47.266 7.8198 46.9354 9.83436Z" fill="#022D42"/>
+<path d="M37.2933 4.14233C41.05 4.14233 43.2017 5.85292 43.2017 8.59463H40.2385C40.2385 7.31318 39.2167 6.49067 37.3294 6.49067C35.6524 6.49067 34.4984 7.14033 34.4984 8.11185C34.4984 9.25025 35.995 9.48866 37.4676 9.72707L38.3512 9.87012C40.527 10.2218 43.6465 10.7284 43.6465 13.8933C43.6465 16.5098 41.4947 17.9999 37.5578 17.9999C33.4345 17.9999 31.3008 16.3668 31.3008 13.4403H34.264C34.264 14.8588 35.3159 15.6396 37.5398 15.6396C39.5173 15.6396 40.6893 15.0257 40.6893 13.9469C40.6893 12.6714 39.1566 12.3973 37.4496 12.1052L36.56 11.9562C34.5826 11.6105 31.5412 11.1039 31.5412 8.17145C31.5412 5.69795 33.711 4.14233 37.2933 4.14233Z" fill="#022D42"/>
+<path d="M28.0366 13.2377H30.9457C30.2425 16.2058 27.8863 17.9999 24.7248 17.9999C20.7758 17.9999 18.1191 15.2045 18.1191 11.0562C18.1191 6.9198 20.7458 4.14233 24.6526 4.14233C28.5054 4.14233 31.0058 6.84828 31.0058 11.0264C31.0058 11.3363 30.9938 11.6403 30.9578 11.98H21.1004C21.3528 14.1674 22.7172 15.4787 24.8029 15.4787C26.3837 15.4787 27.4476 14.7218 28.0366 13.2377ZM21.1425 9.83436H28.0186C27.7 7.75424 26.54 6.63967 24.6647 6.63967C22.7413 6.63967 21.473 7.8198 21.1425 9.83436Z" fill="#022D42"/>
+<path d="M12.6618 11.3843V17.6426H9.64453V4.50024H12.6618V8.88102C13.2088 6.16315 14.7475 4.50024 17.4463 4.50024H18.1435V7.33136H17.1457C13.7317 7.33136 12.6618 8.63069 12.6618 11.3843Z" fill="#022D42"/>
+<path d="M8.84758 17.5412C7.77169 17.8452 6.82202 17.9942 5.99256 17.9942C3.20965 17.9942 1.73105 16.3313 1.73105 13.1127V6.93199H0V4.50021H1.73105V1.47241H4.74836V4.50021H8.84758V6.93199H4.74836V13.1187C4.74836 14.7459 5.33139 15.4849 6.65372 15.4849C7.17664 15.4849 7.88589 15.3717 8.84758 15.1213V17.5412Z" fill="#022D42"/>
+</svg>`;
+
+  /* ── Config ─────────────────────────────────────────────────── */
+  const CFG = {
+    fontSize    : 2,
+    density     : 28,
+    alphaThresh : 8,       // min alpha to create a particle
+    cursorRadius: 260,
+    cursorForce : 3.5,
+    idleTimeout : 180,
+    scrollForce : 35,
+    scrollDecay : 81,
+    scrollMult  : 3,
+    returnSpeed : 5,
+    friction    : 75,
+  };
+
+  const ASCII_CHARS = '@#W$9876543210?!abc;:+=-,._ ';
+  const FONT_COLOR  = { r: 2, g: 45, b: 66 };   // #022D42 navy
+
+  /* ── State ──────────────────────────────────────────────────── */
+  let scrollVelocity = 0;
+  let lastScrollY = window.scrollY;
+  let particles = [];
+  let scaleX = 1, scaleY = 1;
+  const mouse = { x: -9999, y: -9999, active: false };
+  let mouseIdleTimer = null;
+
+  window.addEventListener('scroll', () => {
+    const cur = window.scrollY;
+    scrollVelocity += (cur - lastScrollY) * 0.6;
+    lastScrollY = cur;
+  }, { passive: true });
+
+  /* ── Particle ───────────────────────────────────────────────── */
+  class Particle {
+    constructor(x, y, char, alpha) {
+      this.ox = x; this.oy = y;
+      this.x  = x; this.y  = y;
+      this.vx = 0; this.vy = 0;
+      this.char  = char;
+      this.alpha = alpha;
+    }
+    update() {
+      const friction  = CFG.friction    / 100;
+      const returnSpd = CFG.returnSpeed / 100;
+      this.vx += (this.ox - this.x) * returnSpd;
+      this.vy += (this.oy - this.y) * returnSpd;
+      this.vx *= friction;
+      this.vy *= friction;
+      this.x  += this.vx;
+      this.y  += this.vy;
+    }
+  }
+
+  /* ── ASCII char selection ───────────────────────────────────── *
+   *  alpha   = 0..255 (fully transparent → fully opaque)         *
+   *  col/row = grid position for deterministic variety            */
+  function pickChar(alpha, col, row) {
+    const chars = ASCII_CHARS.slice(0, CFG.density);
+    // Dense chars for high alpha; lighter chars for anti-alias edges
+    const base  = 1 - alpha / 255;          // 0=opaque→dense, 1=transparent→light
+    // Add position-based variation so interior isn't all the same char
+    const noise = (Math.sin(col * 6.1 + row * 3.7) * 0.5 + 0.5) * 0.35;
+    const t     = Math.min(1, base + noise);
+    const i     = Math.floor(t * (chars.length - 1));
+    return chars[Math.max(0, Math.min(i, chars.length - 1))];
+  }
+
+  /* ── Canvas ─────────────────────────────────────────────────── */
+  const canvas = document.getElementById('ascii-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  /* ── Render SVG → pixel data at target size ─────────────────── */
+  function rasterizeSVG(targetW, targetH, callback) {
+    const blob = new Blob([SVG_SRC], { type: 'image/svg+xml' });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+
+    img.onload = () => {
+      const off = document.createElement('canvas');
+      off.width  = targetW;
+      off.height = targetH;
+      const oc = off.getContext('2d');
+      oc.drawImage(img, 0, 0, targetW, targetH);
+      URL.revokeObjectURL(url);
+      try {
+        callback(oc.getImageData(0, 0, targetW, targetH), targetW, targetH);
+      } catch (e) {
+        console.error('ASCII: canvas error', e);
+      }
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); console.error('SVG load failed', e); };
+    img.src = url;
+  }
+
+  /* ── Build particle grid from pixel data ────────────────────── */
+  function buildFromPixels(imgData, cols, rows) {
+    particles = [];
+    const d = imgData.data;
+
+    const fs    = CFG.fontSize;
+    const lineH = fs * 1.0;   // tighter vertical spacing
+    const charW = fs * 0.50;  // tighter horizontal spacing
+
+    const gridW = cols * charW;
+    const gridH = rows * lineH;
+    canvas.width  = gridW;
+    canvas.height = gridH;
+    // Display at half size
+    canvas.style.width  = (gridW  / 2) + 'px';
+    canvas.style.height = (gridH / 2) + 'px';
+
+    const rect = canvas.getBoundingClientRect();
+    scaleX = gridW / (rect.width  || gridW);
+    scaleY = gridH / (rect.height || gridH);
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const i = (row * cols + col) * 4;
+        const a = d[i + 3];
+        if (a < CFG.alphaThresh) continue;
+
+        const ch = pickChar(a, col, row);
+        if (ch === ' ') continue;
+
+        particles.push(new Particle(col * charW, row * lineH, ch, a / 255));
+      }
+    }
+  }
+
+  /* ── Main build ─────────────────────────────────────────────── */
+  function rebuild() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const fs    = CFG.fontSize;
+    const lineH = fs * 1.3;
+    const charW = fs * 0.62;
+
+    // SVG aspect ratio: 123 / 18
+    const aspect = 123 / 18;
+
+    // Target: sample at 1000px → display at 500px
+    let targetW = 1000;
+    let targetH = Math.round(targetW / aspect);
+
+    const cols = Math.floor(targetW / charW);
+    const rows = Math.floor(targetH / lineH);
+    if (cols < 1 || rows < 1) return;
+
+    rasterizeSVG(cols, rows, (imgData, w, h) => buildFromPixels(imgData, w, h));
+  }
+
+  /* ── Mouse ──────────────────────────────────────────────────── */
+  window.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    if (
+      e.clientX >= rect.left && e.clientX <= rect.right &&
+      e.clientY >= rect.top  && e.clientY <= rect.bottom
+    ) {
+      mouse.x = (e.clientX - rect.left) * scaleX;
+      mouse.y = (e.clientY - rect.top)  * scaleY;
+      mouse.active = true;
+      clearTimeout(mouseIdleTimer);
+      mouseIdleTimer = setTimeout(() => { mouse.active = false; }, CFG.idleTimeout);
+    } else {
+      mouse.active = false;
+      mouse.x = -9999;
+      mouse.y = -9999;
+    }
+  });
+
+  /* ── Animation loop ─────────────────────────────────────────── */
+  function animate() {
+    scrollVelocity *= CFG.scrollDecay / 100;
+    if (Math.abs(scrollVelocity) < 0.02) scrollVelocity = 0;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${CFG.fontSize}px 'Space Mono', monospace`;
+    ctx.textBaseline = 'top';
+
+    const fc = FONT_COLOR;
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+
+      if (mouse.active) {
+        const dx  = p.x - mouse.x;
+        const dy  = p.y - mouse.y;
+        const dSq = dx * dx + dy * dy;
+        const r   = CFG.cursorRadius;
+        if (dSq < r * r && dSq > 0) {
+          const dist = Math.sqrt(dSq);
+          const f    = (r - dist) / r;
+          const ang  = Math.atan2(dy, dx);
+          const str  = f * f * CFG.cursorForce * 0.5;
+          p.vx += Math.cos(ang) * str;
+          p.vy += Math.sin(ang) * str;
+        }
+      }
+
+      const absScroll = Math.abs(scrollVelocity);
+      if (absScroll > 0.3) {
+        const sv  = Math.min(absScroll, 150) / 150;
+        const ang = Math.random() * Math.PI * 2;
+        const f   = sv * CFG.scrollForce * CFG.scrollMult * (0.15 + Math.random() * 0.85) * 0.08;
+        p.vx += Math.cos(ang) * f;
+        p.vy += Math.sin(ang) * f + (scrollVelocity > 0 ? 1 : -1) * sv * CFG.scrollForce * 0.04;
+      }
+
+      p.update();
+      ctx.fillStyle = `rgba(${fc.r},${fc.g},${fc.b},${p.alpha})`;
+      ctx.fillText(p.char, p.x, p.y);
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  /* ── Resize ─────────────────────────────────────────────────── */
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(rebuild, 250);
+  });
+
+  /* ── Boot ───────────────────────────────────────────────────── */
+  function boot() {
+    rebuild();
+    animate();
+  }
+
+  if (document.readyState === 'complete') boot();
+  else window.addEventListener('load', boot);
+
+})();
+</script>
+</body>
+</html>

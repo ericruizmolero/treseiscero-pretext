@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>treseiscero — bordado</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; background:#010305; overflow:hidden; }
+canvas { display:block; }
+#ui {
+  position:fixed; bottom:28px; left:50%; transform:translateX(-50%);
+  color:rgba(170,182,182,0.45); font:11px/1 'Space Mono',monospace;
+  letter-spacing:.15em; text-transform:uppercase;
+  transition:opacity 1.5s;
+}
+#ui.hidden { opacity:0; pointer-events:none; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="ui"><span id="status">preparando…</span></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/",
+    "@chenglou/pretext": "https://unpkg.com/@chenglou/pretext/dist/layout.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const SVG_W        = 160, SVG_H = 24;
+const RASTER_SCALE = 10;                    // 1600×240 mask
+const ROW_SPACING  = 5;                     // raster px between satin scan lines
+const STITCH_ANGLE = 5 * Math.PI / 180;     // 5° diagonal satin — covers full 160-unit wide logo
+const TUBE_RADIUS  = 0.185;
+const TUBE_SEG     = 10;
+const TUBE_RAD_SEG = 7;
+const ARC_FACTOR   = 0.22;
+const ARC_MAX      = 2.4;
+// Treseiscero brand beige thread
+const THREAD_BASE  = new THREE.Color(0xF9F9F1);
+
+// ── Renderer (no post-processing — real thread doesn't glow) ───────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+// ── Scene — warm dark fabric background ────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x011520); // deep navy — treseiscero brand
+
+// ── Camera — slightly wider to show full logo ──────────────────────────────
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 600);
+camera.position.set(0, 12, 230);
+camera.lookAt(0, 0, 0);
+
+// ── Lighting — natural, like a lamp over a sewing table ───────────────────
+// Soft navy-tinted ambient
+scene.add(new THREE.AmbientLight(0x1a304a, 1.2));
+// Cool-white overhead lamp — catches thread arc tops against navy fabric
+const keyLight = new THREE.DirectionalLight(0xeef5ff, 3.0);
+keyLight.position.set(5, 90, 55);
+scene.add(keyLight);
+// Subtle navy counter-light from below-left — deepens shadows
+const fillLight = new THREE.DirectionalLight(0x0d2236, 0.8);
+fillLight.position.set(-60, -40, 30);
+scene.add(fillLight);
+
+// ── Fabric ─────────────────────────────────────────────────────────────────
+const fabricTex = new THREE.CanvasTexture(makeFabricCanvas(512));
+fabricTex.wrapS = fabricTex.wrapT = THREE.RepeatWrapping;
+fabricTex.repeat.set(8, 1.3);
+const fabricMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(320, 52),
+  new THREE.MeshStandardMaterial({ map: fabricTex, roughness: 0.98, metalness: 0, color: 0x022D42 })
+);
+fabricMesh.position.z = -1.8;
+scene.add(fabricMesh);
+
+// ── Needle — a subtle warm glow, like a lamp following the needle ──────────
+const needleLight = new THREE.PointLight(0xe8f4ff, 0, 30, 2.2);
+scene.add(needleLight);
+const needleGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.45, 8, 6),
+  new THREE.MeshBasicMaterial({ color: 0xf0f8ff })
+);
+needleGlow.visible = false;
+needleLight.add(needleGlow);
+
+// ── Status ─────────────────────────────────────────────────────────────────
+const statusEl = document.getElementById('status');
+const uiEl     = document.getElementById('ui');
+
+// ── Animation state (driven from tick loop — no GSAP needed) ──────────────
+const anim = {
+  startTime:    null,
+  initDelay:    1.0,      // seconds before first stitch
+  rowDur:       0.08,     // seconds per row
+  rowMeshes:    [],
+  rowMeta:      [],
+  rowRevealAt:  [],       // timestamp when each row was revealed
+  done:         false,
+};
+
+// ── Mouse parallax ─────────────────────────────────────────────────────────
+let tX = 0, tY = 0, cX = 0, cY = 0;
+document.addEventListener('mousemove', e => {
+  tX = (e.clientX / innerWidth  - 0.5) * 16;
+  tY = (e.clientY / innerHeight - 0.5) * -6;
+});
+
+// ── Build geometry (async) then start ticking ──────────────────────────────
+(async () => {
+  const mask = await rasteriseText();
+  statusEl.textContent = 'bordando…';
+
+  const { rowMeshes, rowMeta } = buildStitchRows(mask);
+
+  // Sort rows left→right by character index (from pretext) then by scan order
+  const order = rowMeshes.map((_, i) => i).sort((a, b) => {
+    const ca = rowMeta[a].charIdx, cb = rowMeta[b].charIdx;
+    return ca !== cb ? ca - cb : a - b;
+  });
+
+  anim.rowMeshes   = order.map(i => rowMeshes[i]);
+  anim.rowMeta     = order.map(i => rowMeta[i]);
+  anim.rowRevealAt = new Array(anim.rowMeshes.length).fill(null);
+  anim.rowMeshes.forEach(m => { m.visible = false; scene.add(m); });
+
+  tick(); // start render + animation loop
+})();
+
+// ── Tick loop (setTimeout-based — works even in throttled iframes) ─────────
+function tick() {
+  setTimeout(tick, 1000 / 60);
+
+  const now = performance.now() / 1000; // seconds
+
+  // ── Parallax ──────────────────────────────────────────────────────────
+  cX += (tX - cX) * 0.035;
+  cY += (tY - cY) * 0.035;
+  camera.position.x = cX;
+  camera.position.y = 18 + cY;
+  camera.lookAt(0, 0, 0);
+
+  // ── Stitch animation ──────────────────────────────────────────────────
+  if (anim.rowMeshes.length > 0) {
+    if (!anim.startTime) anim.startTime = now;
+    const elapsed = now - anim.startTime - anim.initDelay;
+
+    if (elapsed >= 0) {
+      const nRows = anim.rowMeshes.length;
+      const activeRow = Math.floor(elapsed / anim.rowDur); // current row being stitched
+      const frac = (elapsed % anim.rowDur) / anim.rowDur;  // progress within that row
+
+      // Reveal rows as needle completes each pass
+      for (let i = 0; i < Math.min(activeRow, nRows); i++) {
+        if (!anim.rowMeshes[i].visible) {
+          anim.rowMeshes[i].visible = true;
+          anim.rowRevealAt[i] = now;
+        }
+      }
+
+      // Subtle warmth that settles quickly — like thread catching ambient light
+      for (let i = 0; i < nRows; i++) {
+        if (anim.rowMeshes[i].visible && anim.rowRevealAt[i] !== null) {
+          const age = now - anim.rowRevealAt[i];
+          anim.rowMeshes[i].material.emissiveIntensity =
+            0.06 + 0.18 * Math.exp(-age * 5.0);
+        }
+      }
+
+      // Needle position
+      if (activeRow < nRows) {
+        const meta = anim.rowMeta[activeRow];
+        needleLight.position.set(
+          meta.wx0 + (meta.wx1 - meta.wx0) * frac,
+          meta.wy0 + (meta.wy1 - meta.wy0) * frac,
+          ARC_MAX * 0.9
+        );
+        needleLight.intensity = 3.5;
+        needleGlow.visible = true;
+      } else if (!anim.done) {
+        // Animation complete
+        anim.done = true;
+        needleLight.intensity = 0;
+        needleGlow.visible = false;
+        // Reveal remaining rows (in case of timing overshoot)
+        anim.rowMeshes.forEach((m, i) => {
+          if (!m.visible) { m.visible = true; anim.rowRevealAt[i] = now; }
+        });
+        statusEl.textContent = 'treseiscero';
+        setTimeout(() => uiEl.classList.add('hidden'), 3000);
+      }
+
+      // Idle: gentle fill light pulse after completion
+      if (anim.done) {
+        // Gentle breathing — like candlelight over fabric
+        keyLight.intensity = 2.8 + Math.sin(now * 0.6) * 0.15;
+      }
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+
+function makeFabricCanvas(size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  // Navy base: #022D42 = rgb(2,45,66)
+  ctx.fillStyle = '#011829'; ctx.fillRect(0, 0, size, size);
+  for (let x = 0; x < size; x += 4) {
+    const v = 6 + Math.random() * 14;
+    ctx.strokeStyle = `rgba(${~~(v*0.08)},${~~(v*0.7)},${~~(v)},0.75)`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke();
+  }
+  for (let y = 0; y < size; y += 4) {
+    const v = 5 + Math.random() * 12;
+    ctx.strokeStyle = `rgba(${~~(v*0.06)},${~~(v*0.65)},${~~(v)},0.55)`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+  }
+  return c;
+}
+
+async function rasteriseText() {
+  const rW = SVG_W * RASTER_SCALE, rH = SVG_H * RASTER_SCALE; // 1600×240
+  const TEXT = 'treseiscero';
+
+  // Wait for Satoshi 900 to load (Fontshare CDN)
+  await document.fonts.load('900 100px Satoshi');
+
+  // Probe at 100px — pretext's prepareWithSegments + layoutWithLines gives
+  // accurate line width (kerning-aware, no DOM reflow)
+  const probeSpec  = '900 100px Satoshi';
+  const probePrep  = prepareWithSegments(TEXT, probeSpec);
+  const probeLayout = layoutWithLines(probePrep, rW * 10, 120);
+  const probeWidth  = probeLayout.lines[0]?.width ?? 600;
+
+  // Scale font size so text fills ~88% of raster width
+  const fontSize = Math.round(100 * (rW * 0.88 / probeWidth));
+  const fontSpec = `900 ${fontSize}px Satoshi`;
+  await document.fonts.load(fontSpec);
+
+  // Final layout width via pretext (single source of truth for text metrics)
+  const finalPrep    = prepareWithSegments(TEXT, fontSpec);
+  const finalLayout  = layoutWithLines(finalPrep, rW * 10, fontSize * 1.2);
+  const lineWidth    = finalLayout.lines[0]?.width ?? probeWidth * (fontSize / 100);
+  const textX        = (rW - lineWidth) / 2;
+
+  // Build kerning-aware character cursor positions using canvas measureText
+  // (pretext uses the same canvas API internally — consistent results)
+  const ctx0 = document.createElement('canvas').getContext('2d');
+  ctx0.font  = fontSpec;
+  const charBounds = Array.from({ length: TEXT.length + 1 }, (_, i) =>
+    textX + ctx0.measureText(TEXT.slice(0, i)).width
+  );
+
+  // Render white text onto raster canvas
+  const c = document.createElement('canvas'); c.width = rW; c.height = rH;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.font = fontSpec;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(TEXT, textX, rH / 2);
+
+  return { pixels: ctx.getImageData(0, 0, rW, rH).data, width: rW, height: rH, charBounds };
+}
+
+/**
+ * Diagonal satin-stitch scan at STITCH_ANGLE.
+ * Scan lines: ry = d/cosA + rx*tanA, spaced ROW_SPACING apart.
+ * Each scan line → one Mesh (initially hidden, revealed row-by-row during animation).
+ */
+function buildStitchRows({ pixels, width, height, charBounds }) {
+  const cosA  = Math.cos(STITCH_ANGLE);
+  const sinA  = Math.sin(STITCH_ANGLE);
+  const tanA  = Math.tan(STITCH_ANGLE);
+  // d range must cover ALL raster pixels, including top-right corner:
+  //   d_min = -(width-1)*sinA  (scan lines reaching rx=max, ry=0)
+  //   d_max = (height-1)*cosA  (scan lines reaching rx=0, ry=max)
+  const d_min = -(width - 1) * sinA;
+  const d_max = (height - 1) * cosA;
+
+  // Cotton thread: matte, no shine — looks hand-stitched, not metallic
+  const baseMat = new THREE.MeshStandardMaterial({
+    vertexColors:      true,
+    roughness:         0.72,
+    metalness:         0.0,
+    emissive:          new THREE.Color(0x010d18),
+    emissiveIntensity: 0.06,
+  });
+
+  const rowMeshes = [];
+  const rowMeta   = [];
+
+  for (let d = d_min; d <= d_max; d += ROW_SPACING) {
+    const rowGeos   = [];
+    let inSpan      = false;
+    let spanRxS     = 0, spanRyS = 0;
+    let firstWx     = null, firstWy = null;
+    let lastWx      = 0,    lastWy  = 0;
+
+    for (let rx = 0; rx <= width; rx++) {
+      const ry  = Math.round(d / cosA + rx * tanA);
+      const inB = ry >= 0 && ry < height && rx < width;
+      const lit = inB && pixels[(ry * width + rx) * 4 + 3] > 108;
+
+      if (lit && !inSpan) {
+        inSpan = true; spanRxS = rx; spanRyS = ry;
+      } else if ((!lit || rx === width) && inSpan) {
+        inSpan = false;
+        const ex  = rx - 1;
+        const ery = Math.round(d / cosA + ex * tanA);
+        const g   = makeStitchTube(spanRxS, spanRyS, ex, ery);
+        if (g) {
+          rowGeos.push(g);
+          const wx1 = spanRxS / RASTER_SCALE - SVG_W / 2;
+          const wy1 = -(spanRyS / RASTER_SCALE - SVG_H / 2);
+          if (firstWx === null) { firstWx = wx1; firstWy = wy1; }
+          lastWx = ex / RASTER_SCALE - SVG_W / 2;
+          lastWy = -(ery / RASTER_SCALE - SVG_H / 2);
+        }
+      }
+    }
+
+    if (rowGeos.length === 0) continue;
+
+    const merged = mergeGeometries(rowGeos, false);
+    rowGeos.forEach(g => g.dispose());
+    coloriseRow(merged);
+
+    // Determine which character this scan row belongs to via pretext charBounds
+    const rxCenter = ((firstWx ?? 0) + lastWx) / 2 * RASTER_SCALE + width / 2;
+    let charIdx = (charBounds?.length ?? 1) - 2;
+    if (charBounds) {
+      for (let ci = 0; ci < charBounds.length - 1; ci++) {
+        if (rxCenter < charBounds[ci + 1]) { charIdx = ci; break; }
+      }
+    }
+
+    rowMeshes.push(new THREE.Mesh(merged, baseMat.clone()));
+    rowMeta.push({ wx0: firstWx ?? 0, wy0: firstWy ?? 0, wx1: lastWx, wy1: lastWy, charIdx });
+  }
+
+  return { rowMeshes, rowMeta };
+}
+
+function makeStitchTube(rx1, ry1, rx2, ry2) {
+  const x1s = rx1 / RASTER_SCALE, y1s = ry1 / RASTER_SCALE;
+  const x2s = rx2 / RASTER_SCALE, y2s = ry2 / RASTER_SCALE;
+  const cx  = SVG_W / 2, cy = SVG_H / 2;
+  const wx1 = x1s - cx, wy1 = -(y1s - cy);
+  const wx2 = x2s - cx, wy2 = -(y2s - cy);
+  const len = Math.hypot(wx2 - wx1, wy2 - wy1);
+  if (len < 0.3) return null;
+  // Organic irregularity: each stitch has slightly different arc height and
+  // a tiny lateral wobble at the midpoint — hand-stitched, not machine-perfect
+  const randSeed  = Math.abs(Math.sin(rx1 * 7.3 + ry1 * 13.7));
+  const arcWobble = 0.7 + randSeed * 0.6;          // arc varies 70%–130% of base
+  const lateralW  = (randSeed - 0.5) * 0.12;       // midpoint drifts ±0.06 laterally
+  const arcH = Math.min(len * ARC_FACTOR * arcWobble, ARC_MAX);
+  const midX = (wx1+wx2)/2 + lateralW * (wy2-wy1) / (len + 0.01);
+  const midY = (wy1+wy2)/2 + lateralW * (wx1-wx2) / (len + 0.01);
+  try {
+    return new THREE.TubeGeometry(
+      new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(wx1, wy1, 0),
+        new THREE.Vector3(midX, midY, arcH),
+        new THREE.Vector3(wx2, wy2, 0)
+      ),
+      TUBE_SEG, TUBE_RADIUS, TUBE_RAD_SEG, false
+    );
+  } catch { return null; }
+}
+
+/** Per-stitch brightness variation + warm boost at arc peaks */
+function coloriseRow(geometry) {
+  const pos  = geometry.attributes.position;
+  const n    = pos.count;
+  const cols = new Float32Array(n * 3);
+  const vertsPerStitch = (TUBE_SEG + 1) * (TUBE_RAD_SEG + 1);
+  for (let i = 0; i < n; i++) {
+    const z    = pos.getZ(i);
+    const seed = Math.floor(i / vertsPerStitch);
+    const hash = Math.abs(Math.sin(seed * 127.1 + 311.7)) % 1;
+    const vary = (hash - 0.5) * 0.10;
+    const bright = z * 0.022; // neutral brightness boost at arc peaks
+    cols[i*3+0] = Math.min(1, THREAD_BASE.r + vary + bright);
+    cols[i*3+1] = Math.min(1, THREAD_BASE.g + vary + bright);
+    cols[i*3+2] = Math.min(1, THREAD_BASE.b + vary + bright * 0.9);
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+}
+</script>
+</body>
+</html>

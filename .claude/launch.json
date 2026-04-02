@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "treseiscero-dev",
+      "runtimeExecutable": "/Users/ericruiz/.nvm/versions/node/v22.21.1/bin/npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "env": {
+        "PATH": "/Users/ericruiz/.nvm/versions/node/v22.21.1/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    },
+    {
+      "name": "mosaic-tool",
+      "runtimeExecutable": "/Users/ericruiz/.nvm/versions/node/v22.21.1/bin/npx",
+      "runtimeArgs": ["serve", "mosaic-app", "-p", "8765", "--no-clipboard"],
+      "port": 8765
+    },
+    {
+      "name": "embroidery",
+      "runtimeExecutable": "/Users/ericruiz/.nvm/versions/node/v22.21.1/bin/npx",
+      "runtimeArgs": ["serve", ".", "-p", "8766", "--no-clipboard"],
+      "port": 8766
+    }
+  ]
+}
