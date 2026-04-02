@@ -29,7 +29,7 @@
 
   #canvas {
     display: block;
-    width: 500px;
+    width: min(90vw, 1100px);
     max-width: calc(100vw - 32px);
     aspect-ratio: 1000 / 146;
     transition: opacity 0.6s ease;
@@ -359,17 +359,20 @@ const DEFAULTS = {
 const cfg = { ...DEFAULTS }
 
 /* ── Canvas + máscara ────────────────────────────────────────── */
-const RENDER_W = 1000
-const RENDER_H = Math.round(RENDER_W * (18 / 123))  // ≈ 146px
-const COLOR    = { r: 2, g: 45, b: 66 }
+// DPR: multiplica la resolución interna del canvas por el pixel ratio del
+// dispositivo → en pantallas retina/4K las letras quedan perfectamente nítidas.
+const DPR      = Math.min(window.devicePixelRatio || 1, 3)
+const DISPLAY_W = Math.min(window.innerWidth * 0.9, 1100)
+const RENDER_W  = Math.round(DISPLAY_W * DPR)
+const RENDER_H  = Math.round(RENDER_W * (18 / 123))
+const COLOR     = { r: 2, g: 45, b: 66 }
 
 const canvas = document.getElementById('canvas')
 const ctx    = canvas.getContext('2d')
 
 canvas.width  = RENDER_W
 canvas.height = RENDER_H
-canvas.style.width  = (RENDER_W / 2) + 'px'
-// height lo gestiona el CSS con aspect-ratio para que sea responsive
+// Tamaño CSS gestionado por la hoja de estilos (min(90vw,1100px) + aspect-ratio)
 
 await document.fonts.ready
 
@@ -400,28 +403,24 @@ function maskAlpha(x, y) {
 let particles = []
 
 function rebuild() {
-  const font  = `${cfg.fontWeight} ${cfg.fontSize}px 'Satoshi', sans-serif`
-  const lineH = Math.round(cfg.fontSize * cfg.lineHeight)
-  // Sin espacio: Pretext puede romper en cualquier carácter → llena cada
-  // línea de borde a borde, el logo nunca se recorta con ningún parámetro.
+  // Multiplicar por DPR → coordenadas canvas reales → letras nítidas en retina/4K
+  const font  = `${cfg.fontWeight} ${cfg.fontSize * DPR}px 'Satoshi', sans-serif`
+  const lineH = Math.round(cfg.fontSize * cfg.lineHeight * DPR)
   const WORD     = 'treseiscero'
   const WORD_LEN = WORD.length
 
   ctx.font = font
 
   const rows     = Math.ceil(RENDER_H / lineH) + 2
-  const estCols  = Math.ceil(RENDER_W / (cfg.fontSize * 0.55))
+  const estCols  = Math.ceil(RENDER_W / (cfg.fontSize * DPR * 0.55))
   const longText = WORD.repeat(Math.ceil((rows * estCols * 2) / WORD_LEN) + 4)
 
   const prepared  = prepareWithSegments(longText, font)
   const { lines } = layoutWithLines(prepared, RENDER_W, lineH)
 
-  // Modo píxel: cuando la fuente es muy pequeña los glifos dejan huecos y
-  // la forma se pierde. En pixel mode usamos celdas rectangulares uniformes
-  // con el alpha exacto del SVG → el logo emerge con total nitidez.
   const pixelMode    = cfg.fontSize <= 4
-  const fixedCellW   = cfg.fontSize * 0.62   // ancho uniforme de celda en pixel mode
-  const effectThresh = pixelMode ? 1 : cfg.alphaThresh  // capturar todo el antialiasing
+  const fixedCellW   = cfg.fontSize * 0.62 * DPR
+  const effectThresh = pixelMode ? 1 : cfg.alphaThresh
 
   const next = []
   let globalCharIdx = 0
@@ -436,14 +435,14 @@ function rebuild() {
       // En pixel mode: ancho de celda fijo y uniforme (sin kerning variable)
       const cw = pixelMode
         ? fixedCellW
-        : ctx.measureText(ch).width + cfg.letterSpacing
+        : ctx.measureText(ch).width + cfg.letterSpacing * DPR
 
       if (cfg.wordGap > 0 && globalCharIdx % WORD_LEN === 0 && globalCharIdx > 0) {
-        x += cfg.wordGap
+        x += cfg.wordGap * DPR
       }
 
       const sampleX = x + cw * 0.5
-      const sampleY = oy + cfg.fontSize * 0.5
+      const sampleY = oy + cfg.fontSize * DPR * 0.5
       const alpha   = maskAlpha(sampleX, sampleY)
 
       if (alpha >= effectThresh) {
@@ -495,7 +494,7 @@ const FRICTION = 0.75
 
 function animate() {
   ctx.clearRect(0, 0, RENDER_W, RENDER_H)
-  ctx.font = `${cfg.fontWeight} ${cfg.fontSize}px 'Satoshi', sans-serif`
+  ctx.font = `${cfg.fontWeight} ${cfg.fontSize * DPR}px 'Satoshi', sans-serif`
   ctx.textBaseline = 'top'
 
   const retSpeed = cfg.returnSpeed / 100
@@ -506,7 +505,7 @@ function animate() {
       const dx = p.x - mouse.x
       const dy = p.y - mouse.y
       const d2 = dx * dx + dy * dy
-      const r  = cfg.cursorRadius
+      const r  = cfg.cursorRadius * DPR
       if (d2 < r * r && d2 > 0) {
         const d   = Math.sqrt(d2)
         const f   = ((r - d) / r) ** 2 * cfg.cursorForce * 0.5
